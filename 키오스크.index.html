@@ -1,250 +1,275 @@
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>실버패스 - 쉬운 원격 주문</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
-    <style>
-        body { font-family: 'Noto Sans KR', sans-serif; -webkit-tap-highlight-color: transparent; }
-        .safe-area-bottom { padding-bottom: env(safe-area-inset-bottom); }
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-        .animate-pop { animation: pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
-        @keyframes pop { 0% { transform: scale(0.9); } 100% { transform: scale(1); } }
-    </style>
-</head>
-<body class="bg-slate-100 h-screen flex justify-center">
+import React, { useState, useEffect } from 'react';
+import { QrCode, Smartphone, ChevronLeft, Volume2, CheckCircle, UserPlus, CreditCard, UserCheck, Camera } from 'lucide-react';
 
-    <!-- 모바일 프레임 시뮬레이터 (웹 접속 시 중앙 배치) -->
-    <div id="app-container" class="w-full max-w-md bg-white h-screen shadow-2xl overflow-hidden flex flex-col relative">
-        
-        <!-- 화면 렌더링 영역 -->
-        <div id="screen-content" class="flex-1 overflow-hidden"></div>
+const App = () => {
+  const [view, setView] = useState('landing'); // landing, qr-scan, menu-list, cart, success
+  const [selectedCategory, setSelectedCategory] = useState('커피');
+  const [cart, setCart] = useState([]);
+  const [isSpeaking, setIsSpeaking] = useState(false);
 
+  // 시니어 맞춤형 맛 지표 메뉴 데이터 (핵심재료 + 맛 강도)
+  const menuItems = [
+    { id: 1, name: '할메가커피', price: 1900, category: '커피', img: '☕', ingredient: '커피', taste: '달콤3' },
+    { id: 2, name: '아메리카노', price: 2000, category: '커피', img: '☕', ingredient: '커피', taste: '고소1' },
+    { id: 3, name: '딸기연유라떼', price: 3700, category: '라떼', img: '🍓', ingredient: '딸기', taste: '달콤3' },
+    { id: 4, name: '생딸기듬뿍주스', price: 4000, category: '주스', img: '🥤', ingredient: '딸기', taste: '달콤2' },
+    { id: 5, name: '사과유자차', price: 3500, category: '티', img: '🍎', ingredient: '유자', taste: '신맛2' },
+  ];
+
+  const categories = ['커피', '라떼', '주스', '티'];
+
+  const totalPrice = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+
+  // 음성 안내 기능
+  const speak = (text) => {
+    if (!('speechSynthesis' in window)) return;
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'ko-KR';
+    utterance.rate = 0.85; // 조금 더 천천히
+    utterance.onstart = () => setIsSpeaking(true);
+    utterance.onend = () => setIsSpeaking(false);
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const addToCart = (item) => {
+    const existing = cart.find(i => i.id === item.id);
+    if (existing) {
+      setCart(cart.map(i => i.id === item.id ? { ...i, quantity: i.quantity + 1 } : i));
+    } else {
+      setCart([...cart, { ...item, quantity: 1 }]);
+    }
+    speak(`${item.name} 한 개를 담았습니다.`);
+  };
+
+  // 1. 첫 화면: 시작하기
+  const renderLanding = () => (
+    <div className="flex flex-col items-center justify-center h-full p-8 bg-yellow-50 text-center">
+      <div className="w-24 h-24 bg-yellow-400 rounded-3xl flex items-center justify-center mb-10 shadow-lg pulse-animation">
+        <Smartphone className="w-12 h-12 text-black" />
+      </div>
+      <h1 className="text-5xl font-black text-slate-800 mb-6 leading-tight">실버패스</h1>
+      <p className="text-2xl text-slate-600 mb-12 font-bold leading-relaxed">
+        복잡한 화면 대신<br/>
+        <span className="text-yellow-600">내 스마트폰</span>으로<br/>
+        편하게 주문하세요.
+      </p>
+      
+      <button 
+        onClick={() => { setView('qr-scan'); speak("키오스크 화면의 큐알 코드를 카메라로 비춰주세요."); }}
+        className="w-full bg-black text-yellow-400 text-3xl font-black py-10 rounded-[2.5rem] shadow-2xl flex flex-col items-center gap-3 active:scale-95 transition-all"
+      >
+        <QrCode className="w-12 h-12" />
+        주문 시작하기
+      </button>
+
+      <style dangerouslySetInnerHTML={{ __html: `
+        .pulse-animation {
+          animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+          0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 212, 0, 0.7); }
+          70% { transform: scale(1.05); box-shadow: 0 0 0 20px rgba(255, 212, 0, 0); }
+          100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 212, 0, 0); }
+        }
+      `}} />
     </div>
+  );
 
-    <script>
-        // 앱 상태 관리
-        let state = {
-            view: 'landing',
-            selectedCategory: '추천',
-            cart: [],
-            isSpeaking: false
-        };
+  // 2. QR 스캔 화면 (카메라 시뮬레이션)
+  const renderQrScan = () => {
+    useEffect(() => {
+      const timer = setTimeout(() => {
+        setView('menu-list');
+        speak("연결되었습니다. 원하시는 메뉴를 골라주세요.");
+      }, 2500);
+      return () => clearTimeout(timer);
+    }, []);
 
-        const categories = ['추천', '햄버거', '음료', '디저트'];
-        const menuItems = [
-            { id: 1, name: '불고기 버거', price: 4500, category: '추천', img: '🍔' },
-            { id: 2, name: '새우 버거', price: 5200, category: '햄버거', img: '🥪' },
-            { id: 3, name: '콜라', price: 2000, category: '음료', img: '🥤' },
-            { id: 4, name: '감자튀김', price: 1500, category: '추천', img: '🍟' },
-            { id: 5, name: '바닐라 쉐이크', price: 3000, category: '디저트', img: '🍦' },
-        ];
+    return (
+      <div className="relative h-full bg-slate-900 flex flex-col items-center justify-center text-center px-6">
+        <div className="absolute top-12 text-white text-3xl font-black leading-tight">
+          키오스크의 <span className="text-yellow-400">QR코드</span>를<br/>사각형 안에 맞추세요
+        </div>
+        
+        {/* 카메라 가이드 영역 */}
+        <div className="relative w-72 h-72 border-2 border-white/30 rounded-3xl flex items-center justify-center overflow-hidden">
+          <div className="absolute top-0 left-0 w-16 h-16 border-t-8 border-l-8 border-yellow-400 rounded-tl-2xl"></div>
+          <div className="absolute top-0 right-0 w-16 h-16 border-t-8 border-r-8 border-yellow-400 rounded-tr-2xl"></div>
+          <div className="absolute bottom-0 left-0 w-16 h-16 border-b-8 border-l-8 border-yellow-400 rounded-bl-2xl"></div>
+          <div className="absolute bottom-0 right-0 w-16 h-16 border-b-8 border-r-8 border-yellow-400 rounded-br-2xl"></div>
+          
+          <div className="w-full h-1 bg-yellow-400/50 absolute top-0 animate-scan"></div>
+          <Camera className="w-24 h-24 text-white/20" />
+        </div>
 
-        // 음성 안내 기능
-        function speak(text) {
-            if (!('speechSynthesis' in window)) return;
-            window.speechSynthesis.cancel();
-            const utterance = new SpeechSynthesisUtterance(text);
-            utterance.lang = 'ko-KR';
-            utterance.rate = 0.85; // 어르신들을 위해 조금 느리게
-            window.speechSynthesis.speak(utterance);
-        }
+        <button 
+          onClick={() => setView('landing')} 
+          className="absolute bottom-12 text-white/60 underline text-2xl font-bold"
+        >
+          뒤로 가기
+        </button>
 
-        // 화면 전환 함수
-        function navigate(viewName) {
-            state.view = viewName;
-            render();
-            window.scrollTo(0, 0);
-        }
+        <style dangerouslySetInnerHTML={{ __html: `
+          @keyframes scan {
+            0% { top: 0; }
+            100% { top: 100%; }
+          }
+          .animate-scan {
+            animation: scan 2s linear infinite;
+          }
+        `}} />
+      </div>
+    );
+  };
 
-        // 장바구니 기능
-        function addToCart(item) {
-            const existing = state.cart.find(i => i.id === item.id);
-            if (existing) {
-                existing.quantity += 1;
-            } else {
-                state.cart.push({ ...item, quantity: 1 });
-            }
-            speak(item.name + " 한 개 담았습니다.");
-            render();
-        }
+  // 3. 메뉴 리스트 (맛 지표 반영)
+  const renderMenuList = () => (
+    <div className="h-full bg-slate-50 flex flex-col">
+      <header className="bg-yellow-400 p-6 shadow-md flex items-center justify-between">
+        <h2 className="text-3xl font-black">무엇을 드릴까요?</h2>
+        <Volume2 className={isSpeaking ? 'text-black animate-bounce' : 'text-black/30'} size={32} />
+      </header>
+      
+      <div className="flex overflow-x-auto p-4 gap-3 bg-white border-b shadow-sm">
+        {categories.map(cat => (
+          <button 
+            key={cat}
+            onClick={() => { setSelectedCategory(cat); speak(cat + " 메뉴입니다."); }}
+            className={`px-8 py-4 rounded-2xl text-2xl font-black whitespace-nowrap transition-all ${selectedCategory === cat ? 'bg-black text-yellow-400' : 'bg-slate-100 text-slate-400'}`}
+          >
+            {cat}
+          </button>
+        ))}
+      </div>
 
-        function removeFromCart(id) {
-            state.cart = state.cart.filter(i => i.id !== id);
-            render();
-        }
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {menuItems.filter(item => item.category === selectedCategory).map(item => (
+          <div key={item.id} className="bg-white p-6 rounded-[2.5rem] shadow-md flex items-center justify-between active:border-yellow-400 border-4 border-transparent transition-all">
+            <div className="flex items-center gap-6">
+              <span className="text-7xl">{item.img}</span>
+              <div className="text-left">
+                <div className="flex gap-2 mb-2">
+                  <span className="bg-slate-800 text-white px-3 py-1 rounded-lg font-black text-lg">{item.ingredient}</span>
+                  <span className="bg-pink-500 text-white px-3 py-1 rounded-lg font-black text-lg">{item.taste}</span>
+                </div>
+                <h3 className="text-3xl font-black text-slate-800 leading-none mb-1">{item.name}</h3>
+                <p className="text-2xl text-blue-600 font-black">{item.price.toLocaleString()}원</p>
+              </div>
+            </div>
+            <button 
+              onClick={() => addToCart(item)}
+              className="bg-yellow-400 text-black w-20 h-20 rounded-3xl font-black text-4xl shadow-lg active:scale-90 transition-transform flex items-center justify-center border-4 border-black"
+            >
+              +
+            </button>
+          </div>
+        ))}
+      </div>
 
-        // 렌더링 엔진
-        function render() {
-            const content = document.getElementById('screen-content');
-            
-            if (state.view === 'landing') {
-                content.innerHTML = `
-                    <div class="flex flex-col items-center justify-center h-full p-8 bg-blue-50 text-center animate-pop">
-                        <div class="w-24 h-24 bg-blue-600 rounded-[2rem] flex items-center justify-center mb-8 shadow-xl">
-                            <i data-lucide="smartphone" class="w-12 h-12 text-white"></i>
-                        </div>
-                        <h1 class="text-5xl font-black text-slate-800 mb-4 tracking-tight">실버패스</h1>
-                        <p class="text-2xl text-slate-600 mb-12 leading-snug font-medium">어려운 키오스크 대신<br>내 폰으로 편하게 주문하세요.</p>
-                        
-                        <button onclick="navigate('qr-scan'); speak('키오스크의 큐알 코드를 비춰주세요.');" 
-                            class="w-full bg-blue-600 text-white text-3xl font-black py-10 rounded-[2.5rem] shadow-2xl flex flex-col items-center gap-4 active:scale-95 transition-all">
-                            <i data-lucide="qr-code" class="w-12 h-12"></i>
-                            주문 시작하기
-                        </button>
-                        
-                        <button class="mt-8 flex items-center gap-2 text-slate-500 font-bold text-xl px-6 py-3 border-2 border-slate-200 rounded-2xl">
-                            <i data-lucide="user-check"></i> 직원의 도움 받기
-                        </button>
-                    </div>
-                `;
-            } 
-            else if (state.view === 'qr-scan') {
-                content.innerHTML = `
-                    <div class="relative h-full bg-black flex flex-col items-center pt-24 text-center px-6">
-                        <div class="text-white text-3xl font-black mb-12 leading-tight">
-                            키오스크 화면의<br><span class="text-blue-400">QR코드</span>를 맞춰주세요
-                        </div>
-                        <div class="w-72 h-72 border-4 border-blue-500 rounded-[3rem] relative animate-pulse flex items-center justify-center bg-blue-500/10">
-                            <div class="absolute -top-2 -left-2 w-16 h-16 border-t-[12px] border-l-[12px] border-blue-500 rounded-tl-3xl"></div>
-                            <div class="absolute -top-2 -right-2 w-16 h-16 border-t-[12px] border-r-[12px] border-blue-500 rounded-tr-3xl"></div>
-                            <div class="absolute -bottom-2 -left-2 w-16 h-16 border-b-[12px] border-l-[12px] border-blue-500 rounded-bl-3xl"></div>
-                            <div class="absolute -bottom-2 -right-2 w-16 h-16 border-b-[12px] border-r-[12px] border-blue-500 rounded-br-3xl"></div>
-                            <i data-lucide="scan" class="w-24 h-24 text-blue-500/30"></i>
-                        </div>
-                        <button onclick="navigate('landing')" class="mt-24 text-white/50 underline text-xl font-bold">취소하고 돌아가기</button>
-                    </div>
-                `;
-                // 시뮬레이션: 1.5초 후 연결
-                setTimeout(() => {
-                    if(state.view === 'qr-scan') {
-                        navigate('menu-list');
-                        speak("연결되었습니다. 드시고 싶은 음식을 골라주세요.");
-                    }
-                }, 1800);
-            }
-            else if (state.view === 'menu-list') {
-                const totalPrice = state.cart.reduce((s, i) => s + (i.price * i.quantity), 0);
-                content.innerHTML = `
-                    <div class="h-full bg-slate-50 flex flex-col animate-pop">
-                        <header class="bg-white p-6 shadow-sm border-b-2 border-slate-100 flex items-center justify-between">
-                            <h2 class="text-3xl font-black text-slate-800 tracking-tight">메뉴 고르기</h2>
-                            <i data-lucide="volume-2" class="text-blue-600 w-8 h-8"></i>
-                        </header>
-                        
-                        <div class="flex overflow-x-auto p-4 gap-3 bg-white no-scrollbar border-b shadow-inner">
-                            ${categories.map(cat => `
-                                <button onclick="state.selectedCategory='${cat}'; speak('${cat} 메뉴입니다.'); render();" 
-                                    class="px-10 py-5 rounded-3xl text-2xl font-black whitespace-nowrap transition-all ${state.selectedCategory === cat ? 'bg-blue-600 text-white shadow-lg' : 'bg-slate-100 text-slate-400'}">
-                                    ${cat}
-                                </button>
-                            `).join('')}
-                        </div>
+      {cart.length > 0 && (
+        <div className="p-8 bg-white border-t-8 border-yellow-400 flex items-center justify-between shadow-2xl">
+          <div className="flex flex-col">
+            <span className="text-xl font-bold text-slate-400">{cart.length}개 선택함</span>
+            <span className="text-4xl font-black text-black">{totalPrice.toLocaleString()}원</span>
+          </div>
+          <button 
+            onClick={() => { setView('cart'); speak("주문 내용을 확인해주세요."); }}
+            className="bg-black text-yellow-400 px-12 py-6 rounded-[2rem] text-3xl font-black shadow-xl"
+          >
+            주문하기
+          </button>
+        </div>
+      )}
+    </div>
+  );
 
-                        <div class="flex-1 overflow-y-auto p-4 space-y-6">
-                            ${menuItems.filter(item => item.category === state.selectedCategory).map(item => `
-                                <div class="bg-white p-6 rounded-[2.5rem] shadow-sm flex items-center justify-between border-2 border-slate-100 active:border-blue-400 transition-all">
-                                    <div class="flex items-center gap-6">
-                                        <span class="text-7xl">${item.img}</span>
-                                        <div>
-                                            <h3 class="text-3xl font-bold text-slate-800 mb-1">${item.name}</h3>
-                                            <p class="text-2xl text-blue-600 font-black">${item.price.toLocaleString()}원</p>
-                                        </div>
-                                    </div>
-                                    <button onclick="addToCart(${JSON.stringify(item).replace(/"/g, '&quot;')})" 
-                                        class="bg-blue-600 text-white w-20 h-20 rounded-3xl font-black text-4xl shadow-lg active:scale-90 transition-transform">
-                                        +
-                                    </button>
-                                </div>
-                            `).join('')}
-                        </div>
+  // 4. 장바구니 및 결제 방식
+  const renderCart = () => (
+    <div className="h-full bg-slate-50 flex flex-col">
+      <header className="bg-white p-6 shadow-sm flex items-center gap-4 border-b">
+        <button onClick={() => setView('menu-list')} className="p-2 bg-slate-100 rounded-full"><ChevronLeft size={40}/></button>
+        <h2 className="text-3xl font-black">내 주문 확인</h2>
+      </header>
 
-                        ${state.cart.length > 0 ? `
-                        <div class="p-6 bg-white border-t-4 border-blue-100 flex items-center justify-between shadow-[0_-10px_40px_rgba(0,0,0,0.1)] z-10 animate-pop">
-                            <div class="flex flex-col">
-                                <span class="text-xl font-bold text-slate-400">${state.cart.length}개 골랐음</span>
-                                <span class="text-4xl font-black text-blue-600">${totalPrice.toLocaleString()}원</span>
-                            </div>
-                            <button onclick="navigate('cart'); speak('주문 내용을 확인해주세요.');" 
-                                class="bg-blue-600 text-white px-12 py-7 rounded-[2rem] text-3xl font-black shadow-xl active:scale-95 transition-all">
-                                주문하기
-                            </button>
-                        </div>
-                        ` : ''}
-                    </div>
-                `;
-            }
-            else if (state.view === 'cart') {
-                const totalPrice = state.cart.reduce((s, i) => s + (i.price * i.quantity), 0);
-                content.innerHTML = `
-                    <div class="h-full bg-slate-50 flex flex-col animate-pop">
-                        <header class="bg-white p-6 shadow-sm flex items-center gap-6 border-b">
-                            <button onclick="navigate('menu-list')" class="p-3 bg-slate-100 rounded-2xl text-slate-600"><i data-lucide="chevron-left" class="w-8 h-8"></i></button>
-                            <h2 class="text-3xl font-black">담은 음식 확인</h2>
-                        </header>
+      <div className="flex-1 p-6 overflow-y-auto">
+        {cart.map(item => (
+          <div key={item.id} className="bg-white p-6 rounded-[2rem] mb-4 shadow-sm flex items-center justify-between border-2 border-slate-100">
+            <div className="flex flex-col">
+              <h3 className="text-3xl font-black">{item.name}</h3>
+              <p className="text-xl text-slate-400 font-bold">{item.quantity}개 담김</p>
+            </div>
+            <button 
+              onClick={() => setCart(cart.filter(i => i.id !== item.id))} 
+              className="text-red-500 font-black text-2xl px-6 py-2 bg-red-50 rounded-2xl"
+            >
+              삭제
+            </button>
+          </div>
+        ))}
+      </div>
 
-                        <div class="flex-1 p-6 overflow-y-auto space-y-4">
-                            ${state.cart.map(item => `
-                                <div class="bg-white p-6 rounded-[2rem] shadow-sm flex items-center justify-between">
-                                    <h3 class="text-2xl font-black text-slate-700">${item.name} <span class="text-blue-600 ml-2">${item.quantity}개</span></h3>
-                                    <button onclick="removeFromCart(${item.id})" class="text-red-500 font-bold text-xl px-5 py-3 border-2 border-red-50 text-red-400 rounded-2xl">빼기</button>
-                                </div>
-                            `).join('')}
-                        </div>
+      <div className="p-8 bg-white rounded-t-[4rem] shadow-[0_-20px_50px_rgba(0,0,0,0.1)] space-y-6">
+        <div className="flex justify-between items-center mb-2 text-3xl font-black">
+          <span className="text-slate-400">낼 금액</span>
+          <span className="text-black text-5xl font-black">{totalPrice.toLocaleString()}원</span>
+        </div>
+        
+        <button 
+          onClick={() => { setView('success'); speak("접수되었습니다. 카운터에서 직원에게 카드를 주세요."); }}
+          className="w-full bg-orange-500 text-white py-10 rounded-[2.5rem] text-4xl font-black shadow-xl flex flex-col items-center leading-tight"
+        >
+          <span>직원에게 카드 건네기</span>
+          <span className="text-xl font-medium opacity-80 mt-1">(카운터에서 결제)</span>
+        </button>
 
-                        <div class="p-8 bg-white rounded-t-[4rem] shadow-[0_-20px_50px_rgba(0,0,0,0.1)] space-y-5 z-20">
-                            <div class="flex justify-between items-center mb-2 px-2">
-                                <span class="text-2xl font-bold text-slate-400">낼 금액</span>
-                                <span class="text-5xl font-black text-blue-600">${totalPrice.toLocaleString()}원</span>
-                            </div>
-                            
-                            <button onclick="navigate('success'); speak('카운터 결제를 선택하셨습니다. 직원에게 카드를 건네주세요.');" 
-                                class="w-full bg-orange-500 text-white py-9 rounded-[2.5rem] text-3xl font-black shadow-2xl flex flex-col items-center leading-tight active:scale-95 transition-all">
-                                <span>카운터에서 카드결제</span>
-                                <span class="text-lg font-medium opacity-80 mt-1">(직원에게 직접 카드 건네기)</span>
-                            </button>
+        <button 
+          onClick={() => speak("자녀에게 결제 요청을 보냈습니다.")}
+          className="w-full bg-yellow-400 text-black py-6 rounded-[2rem] text-2xl font-black shadow-md flex items-center justify-center gap-3 border-4 border-black"
+        >
+          <UserPlus size={32} /> 자녀가 대신 결제
+        </button>
 
-                            <button onclick="speak('자녀분에게 결제 요청 메시지를 보냈습니다.');"
-                                class="w-full bg-yellow-400 text-slate-800 py-7 rounded-[2rem] text-2xl font-black shadow-md flex items-center justify-center gap-3 active:scale-95 transition-all">
-                                <i data-lucide="user-plus"></i> 자녀가 대신 결제
-                            </button>
-                        </div>
-                    </div>
-                `;
-            }
-            else if (state.view === 'success') {
-                content.innerHTML = `
-                    <div class="h-full bg-blue-50 flex flex-col items-center justify-center p-10 text-center animate-pop">
-                        <div class="w-40 h-40 bg-blue-600 rounded-full flex items-center justify-center text-white mb-10 animate-bounce shadow-2xl border-[12px] border-white">
-                            <i data-lucide="check-circle" class="w-24 h-24"></i>
-                        </div>
-                        <h1 class="text-5xl font-black text-slate-800 mb-6">접수 완료!</h1>
-                        <p class="text-2xl text-slate-600 mb-12 leading-relaxed font-medium">카운터로 이동하여<br><span class="text-orange-600 font-black text-3xl">카드를 직원에게 주세요.</span></p>
-                        
-                        <div class="bg-white w-full p-10 rounded-[3rem] shadow-2xl mb-12 border-4 border-blue-200">
-                            <p class="text-2xl text-slate-400 font-bold mb-3">주문 번호</p>
-                            <p class="text-8xl font-black text-blue-600 tracking-tighter">105</p>
-                        </div>
+        <button onClick={() => setView('menu-list')} className="w-full text-slate-400 font-bold text-2xl py-2 underline">다른 것도 더 볼래요</button>
+      </div>
+    </div>
+  );
 
-                        <button onclick="state.cart=[]; navigate('landing');" 
-                            class="w-full bg-slate-800 text-white py-7 rounded-[2rem] text-2xl font-black shadow-xl active:scale-95 transition-all">
-                            처음으로 돌아가기
-                        </button>
-                    </div>
-                `;
-            }
+  // 5. 완료 화면
+  const renderSuccess = () => (
+    <div className="h-full bg-white flex flex-col items-center justify-center p-10 text-center">
+      <div className="w-40 h-40 bg-green-500 rounded-full flex items-center justify-center text-white mb-10 shadow-2xl pulse-animation">
+        <CheckCircle size={100} strokeWidth={3} />
+      </div>
+      <h1 className="text-6xl font-black text-slate-800 mb-6">접수 성공!</h1>
+      <p className="text-3xl text-slate-600 mb-10 leading-tight font-bold">
+        이제 <span className="text-orange-600 underline">카운터</span>로 가서<br/>
+        카드를 직원에게 주세요.
+      </p>
+      
+      <div className="bg-yellow-50 w-full p-10 rounded-[3rem] shadow-inner mb-12 border-4 border-yellow-200">
+        <p className="text-2xl text-yellow-700 font-bold mb-2">나의 주문번호</p>
+        <p className="text-[120px] font-black text-black leading-none">105</p>
+      </div>
 
-            // 아이콘 렌더링
-            lucide.createIcons();
-        }
+      <button onClick={() => { setView('landing'); setCart([]); }} className="w-full bg-black text-white py-8 rounded-[2rem] text-3xl font-black">처음으로</button>
+    </div>
+  );
 
-        // 초기 실행
-        window.onload = () => {
-            render();
-        };
-    </script>
-</body>
-</html>
+  return (
+    <div className="max-w-md mx-auto h-[850px] bg-white shadow-2xl rounded-[3.5rem] border-[14px] border-slate-900 overflow-hidden relative">
+      {/* 스마트폰 노치 디자인 */}
+      <div className="h-7 bg-slate-900 w-1/3 mx-auto rounded-b-3xl absolute top-0 left-1/2 -translate-x-1/2 z-30"></div>
+      
+      <main className="h-full">
+        {view === 'landing' && renderLanding()}
+        {view === 'qr-scan' && renderQrScan()}
+        {view === 'menu-list' && renderMenuList()}
+        {view === 'cart' && renderCart()}
+        {view === 'success' && renderSuccess()}
+      </main>
+    </div>
+  );
+};
+
+export default App;
